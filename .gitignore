@@ -1,0 +1,12 @@
+# data never goes in git — only small summary files later
+data/raw/
+data/staging/
+*.db
+*.sqlite
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
