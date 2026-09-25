@@ -168,3 +168,12 @@ per day with an identifying User-Agent; no personal data is present or collected
 - [ ] Docker Compose one-command run
 - [ ] Power BI dashboard on `agg_daily`
 - [ ] Second source (Houston live incidents) for cross-city reconciliation
+
+**Postgres caught what SQLite let through.** Porting to Postgres raised
+`CardinalityViolation` on day two of real data. Cause: `call_type_group` is NULL
+for some call types, and both engines treat NULLs as distinct in a UNIQUE
+constraint — so every day inserted a fresh `dim_call_type` row for the same
+(type, NULL) pair, and the fact join fanned out. SQLite hid it because
+`INSERT OR REPLACE` collapsed the duplicates; Postgres refused. Fix: nullable
+parts of a dimension's natural key are stored as `''`, with regression tests on
+both engines. Dimension counts now match exactly across SQLite and Postgres.
