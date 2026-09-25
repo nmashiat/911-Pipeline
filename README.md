@@ -41,6 +41,16 @@ python run_pipeline.py --date 2026-09-01 --skip-extract    # reuse the raw file
 
 Or with make: `make venv`, `make run DATE=2026-09-01`, `make backfill START=… END=…`, `make test`.
 
+**Postgres instead of SQLite** — same code, one switch:
+```bash
+make db-up                                 # docker compose: Postgres 16 on :5432
+make run DATE=2026-09-01 DB=postgres       # or: SF911_DB=postgres python run_pipeline.py …
+make test-all                              # test suite on both engines
+make db-shell                              # psql
+```
+SQLite is the zero-setup default; Postgres is what you'd deploy. `src/db.py` is the
+only file that knows the difference (placeholders, upserts, timestamp maths, DDL file).
+
 Exit code `1` means a hard quality gate or a reconciliation mismatch fired.
 Each step also runs alone: `python -m src.extract --date …`, `src.load`, `src.checks`,
 `src.transform`, `src.reconcile`, `src.aggregate`.
@@ -97,6 +107,12 @@ are counted); `staging_vs_fact` proves the transform didn't drop rows.
 **Idempotent by day.** Each step deletes then reinserts its day. Rerunning a
 day twice yields identical tables. Dimensions upsert and keep their keys.
 
+**Two engines, one SQL.** The pipeline runs on SQLite (default, zero setup) and
+PostgreSQL (`SF911_DB=postgres`). Every dialect difference lives in `src/db.py`;
+pipeline code is written once. Porting surfaced two real bugs SQLite had let
+through — a bare column in a `GROUP BY` and a text-vs-timestamp comparison —
+which is the argument for testing against the engine you'd deploy on.
+
 ## Findings
 
 **The gate that warned was right.** On 2 Sep 2026 the `units_per_call_plausible`
@@ -118,7 +134,7 @@ fires and multi-unit medical calls account for nearly all calls above five units
 ```bash
 make test        # or: python -m pytest
 ```
-`tests/` covers the loader (quarantine reasons, dedupe keeps latest, schema
+`tests/` runs against SQLite by default and Postgres with `SF911_DB=postgres`. It covers the loader (quarantine reasons, dedupe keeps latest, schema
 completeness, idempotent rerun) and the gates (hard fail on future timestamps,
 warn-not-fail on out-of-order timestamps, results recorded, exit code). Each
 test runs against its own temporary database. The suite runs in CI on every push.
@@ -127,7 +143,7 @@ test runs against its own temporary database. The suite runs in CI on every push
 
 - [`docs/metrics.md`](docs/metrics.md) — what every number means
 - [`docs/source_to_target.md`](docs/source_to_target.md) — field lineage
-- [`sql/star_schema.sql`](sql/star_schema.sql) — the model
+- [`sql/star_schema.sql`](sql/star_schema.sql) · [`sql/star_schema_postgres.sql`](sql/star_schema_postgres.sql) — the model
 
 ## Scheduled runs
 
@@ -146,7 +162,7 @@ per day with an identifying User-Agent; no personal data is present or collected
 ## Roadmap
 
 - [x] GitHub Actions: run daily, commit `outputs/*.csv`
-- [ ] PostgreSQL instead of SQLite
+- [x] PostgreSQL (docker compose) alongside SQLite; tests run on both in CI
 - [ ] Airflow DAG replacing `run_pipeline.py`
 - [ ] Great Expectations suites replacing `src/checks.py`
 - [ ] Docker Compose one-command run

@@ -13,6 +13,19 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sf911
+          POSTGRES_PASSWORD: sf911
+          POSTGRES_DB: sf911
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sf911"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -22,8 +35,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Tests
-        run: python -m pytest
+      - name: Tests (SQLite)
+        run: SF911_DB=sqlite python -m pytest
+
+      - name: Tests (Postgres)
+        run: SF911_DB=postgres python -m pytest
 
       # Only the scheduled/manual run pulls data; a code push just runs the tests.
       - name: Skip pipeline on push
