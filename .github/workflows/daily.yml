@@ -1,6 +1,8 @@
 name: daily-pipeline
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "30 13 * * *"     # 13:30 UTC = 06:30 Pacific; source refreshes overnight
   workflow_dispatch:           # manual "Run workflow" button
@@ -20,15 +22,25 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Tests
+        run: python -m pytest
+
+      # Only the scheduled/manual run pulls data; a code push just runs the tests.
+      - name: Skip pipeline on push
+        if: github.event_name == 'push'
+        run: echo "push event — tests only" && exit 0
+
       # The SQLite db is not in git; rebuild recent history so the
       # trailing-7-day gate and dimensions have context.
       - name: Run pipeline for the last 8 days (yesterday inclusive)
+        if: github.event_name != 'push'
         run: |
           START=$(date -u -d "8 days ago" +%F)
           END=$(date -u -d "yesterday" +%F)
           python run_pipeline.py --start "$START" --end "$END"
 
       - name: Export gate + reconciliation log
+        if: github.event_name != 'push'
         run: |
           mkdir -p outputs
           sqlite3 -header -csv sf911.db \
@@ -39,6 +51,7 @@ jobs:
             > outputs/reconciliation.csv
 
       - name: Commit outputs
+        if: github.event_name != 'push'
         run: |
           git config user.name  "pipeline-bot"
           git config user.email "actions@github.com"
