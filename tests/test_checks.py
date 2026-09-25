@@ -1,9 +1,6 @@
-import sqlite3
-
-import config
 
 from src import checks, load
-from tests.conftest import DAY, make_row, write_raw
+from tests.conftest import DAY, fetch, make_row, write_raw
 
 
 def _load(rows):
@@ -51,8 +48,7 @@ def test_results_are_recorded(sandbox):
     _load([make_row()])
     checks.run(DAY)
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        n = conn.execute("SELECT COUNT(*) FROM dq_results WHERE load_date=?", (DAY.isoformat(),)).fetchone()[0]
+    n = fetch("SELECT COUNT(*) FROM dq_results WHERE load_date=?", (DAY.isoformat(),))[0][0]
     assert n == len(checks.CHECKS)
 
 

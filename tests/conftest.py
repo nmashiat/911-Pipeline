@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import config
+from src import db
 
 
 BASE_ROW = {
@@ -44,14 +45,42 @@ def make_row(**overrides) -> dict:
     return row
 
 
+ALL_TABLES = ["agg_daily", "reconciliation", "dq_results", "fact_call", "fact_unit_response",
+              "dim_neighborhood", "dim_unit", "dim_call_type", "dim_date",
+              "staging_rejects", "staging_calls"]
+
+
 @pytest.fixture
 def sandbox(tmp_path: Path, monkeypatch):
-    """Redirect RAW_DIR and DB_PATH into a temp folder for the duration of one test."""
+    """
+    Isolate one test: RAW_DIR in a temp folder, and a fresh database.
+    SQLite: a new file per test. Postgres (SF911_DB=postgres): drop every table first.
+    """
     raw = tmp_path / "raw"
     raw.mkdir()
     monkeypatch.setattr(config, "RAW_DIR", raw)
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "test.db")
+    if db.is_postgres():
+        with db.connect() as conn:
+            cur = conn.cursor()
+            for t in ALL_TABLES:
+                cur.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
     return tmp_path
+
+
+def fetch(sql: str, params=()) -> list[tuple]:
+    """Run a query on whichever backend is active and return all rows."""
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute(db.q(sql), params)
+        return cur.fetchall()
+
+
+def columns(table: str) -> list[str]:
+    if db.is_postgres():
+        return [r[0] for r in fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,))]
+    return [r[1] for r in fetch(f"PRAGMA table_info({table})")]
 
 
 def write_raw(rows: list[dict], day: date = DAY) -> None:

@@ -1,9 +1,6 @@
-import sqlite3
-
-import config
 
 from src import load
-from tests.conftest import DAY, make_row, write_raw
+from tests.conftest import DAY, columns, fetch, make_row, write_raw
 
 
 def test_missing_call_number_is_quarantined_with_reason(sandbox):
@@ -11,9 +8,8 @@ def test_missing_call_number_is_quarantined_with_reason(sandbox):
 
     load.main(["--date", DAY.isoformat()])
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        loaded = conn.execute("SELECT COUNT(*) FROM staging_calls").fetchone()[0]
-        rejects = conn.execute("SELECT rowid, reject_reason FROM staging_rejects").fetchall()
+    loaded = fetch("SELECT COUNT(*) FROM staging_calls")[0][0]
+    rejects = fetch("SELECT rowid, reject_reason FROM staging_rejects")
 
     assert loaded == 1
     assert rejects == [("2-E01", "MISSING_CALL_NUMBER")]
@@ -24,8 +20,7 @@ def test_unparseable_timestamp_is_quarantined(sandbox):
 
     load.main(["--date", DAY.isoformat()])
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        rejects = conn.execute("SELECT reject_reason FROM staging_rejects").fetchall()
+    rejects = fetch("SELECT reject_reason FROM staging_rejects")
     assert rejects == [("UNPARSEABLE_DISPATCH_DTTM",)]
 
 
@@ -36,9 +31,8 @@ def test_duplicate_rowid_keeps_latest(sandbox):
 
     load.main(["--date", DAY.isoformat()])
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        rows = conn.execute("SELECT on_scene_dttm FROM staging_calls").fetchall()
-    assert rows == [("2026-09-01T03:25:00",)]
+    rows = fetch("SELECT on_scene_dttm FROM staging_calls")
+    assert str(rows[0][0]).replace(" ", "T") == "2026-09-01T03:25:00"
 
 
 def test_missing_optional_column_is_created(sandbox):
@@ -47,9 +41,7 @@ def test_missing_optional_column_is_created(sandbox):
 
     load.main(["--date", DAY.isoformat()])
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(staging_calls)")]
-    assert "hospital_dttm" in cols
+    assert "hospital_dttm" in columns("staging_calls")
 
 
 def test_rerun_is_idempotent(sandbox):
@@ -58,5 +50,4 @@ def test_rerun_is_idempotent(sandbox):
     load.main(["--date", DAY.isoformat()])
     load.main(["--date", DAY.isoformat()])
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM staging_calls").fetchone()[0] == 2
+    assert fetch("SELECT COUNT(*) FROM staging_calls")[0][0] == 2
