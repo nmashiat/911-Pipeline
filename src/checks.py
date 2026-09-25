@@ -14,12 +14,12 @@ can see the history of every gate, every day. Silence is not evidence.
 """
 import argparse
 import logging
-import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 import config
+from src import db
 
 log = logging.getLogger("checks")
 
@@ -41,16 +41,23 @@ class Result:
 # ---------- individual checks ----------
 # Each takes (conn, load_date) and returns a Result. Keep them small and single-purpose.
 
+def _x(conn, sql, params=()):
+    """Execute on either engine and return a cursor-like object with fetchone()."""
+    cur = conn.cursor()
+    cur.execute(db.q(sql), params)
+    return cur
+
+
 def check_row_count_nonzero(conn, d) -> Result:
-    n = conn.execute("SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,)).fetchone()[0]
+    n = _x(conn, "SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,)).fetchone()[0]
     return Result("row_count_nonzero", "FAIL", n > 0, n, "> 0",
                   "Zero rows almost always means the API call failed, not a quiet day.")
 
 
 def check_row_count_vs_history(conn, d) -> Result:
     """Today's count within 40% of the trailing 7-day average. WARN only until history exists."""
-    n = conn.execute("SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,)).fetchone()[0]
-    hist = conn.execute(
+    n = _x(conn, "SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,)).fetchone()[0]
+    hist = _x(conn,
         """SELECT AVG(c) FROM (
              SELECT COUNT(*) AS c FROM staging_calls
              WHERE load_date < ? GROUP BY load_date ORDER BY load_date DESC LIMIT 7)""",
@@ -63,14 +70,14 @@ def check_row_count_vs_history(conn, d) -> Result:
 
 
 def check_no_duplicate_rowids(conn, d) -> Result:
-    dupes = conn.execute(
+    dupes = _x(conn,
         "SELECT COUNT(*) FROM (SELECT rowid FROM staging_calls WHERE load_date=? GROUP BY rowid HAVING COUNT(*)>1)",
         (d,)).fetchone()[0]
     return Result("no_duplicate_rowids", "FAIL", dupes == 0, dupes, "= 0")
 
 
 def check_required_not_null(conn, d) -> Result:
-    n = conn.execute(
+    n = _x(conn,
         """SELECT COUNT(*) FROM staging_calls WHERE load_date=?
            AND (call_number IS NULL OR unit_id IS NULL OR received_dttm IS NULL)""",
         (d,)).fetchone()[0]
@@ -80,9 +87,10 @@ def check_required_not_null(conn, d) -> Result:
 
 def check_no_future_timestamps(conn, d) -> Result:
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
-    n = conn.execute(
-        """SELECT COUNT(*) FROM staging_calls WHERE load_date=?
-           AND (received_dttm > ? OR dispatch_dttm > ? OR on_scene_dttm > ?)""",
+    p = db.ts_param()
+    n = _x(conn,
+        f"""SELECT COUNT(*) FROM staging_calls WHERE load_date=?
+           AND (received_dttm > {p} OR dispatch_dttm > {p} OR on_scene_dttm > {p})""",
         (d, now, now, now)).fetchone()[0]
     return Result("no_future_timestamps", "FAIL", n == 0, n, "= 0")
 
@@ -90,7 +98,7 @@ def check_no_future_timestamps(conn, d) -> Result:
 def check_timestamps_chronological(conn, d) -> Result:
     """received <= dispatch <= response <= on_scene, where each is present.
     Real data has a few violations (clock drift, manual entry); WARN above 2%."""
-    total, bad = conn.execute(
+    total, bad = _x(conn,
         """SELECT COUNT(*),
                   SUM(CASE WHEN (dispatch_dttm IS NOT NULL AND dispatch_dttm < received_dttm)
                              OR (response_dttm IS NOT NULL AND dispatch_dttm IS NOT NULL AND response_dttm < dispatch_dttm)
@@ -103,14 +111,14 @@ def check_timestamps_chronological(conn, d) -> Result:
 
 
 def check_call_type_present(conn, d) -> Result:
-    n = conn.execute(
+    n = _x(conn,
         "SELECT COUNT(*) FROM staging_calls WHERE load_date=? AND (call_type IS NULL OR call_type='')",
         (d,)).fetchone()[0]
     return Result("call_type_present", "WARN", n == 0, n, "= 0")
 
 
 def check_units_per_call_plausible(conn, d) -> Result:
-    mx = conn.execute(
+    mx = _x(conn,
         """SELECT MAX(c) FROM (SELECT COUNT(*) AS c FROM staging_calls
            WHERE load_date=? GROUP BY call_number)""", (d,)).fetchone()[0] or 0
     return Result("units_per_call_plausible", "WARN", mx <= 30, mx, "<= 30 units on one call",
@@ -118,7 +126,7 @@ def check_units_per_call_plausible(conn, d) -> Result:
 
 
 def check_coordinates_in_sf(conn, d) -> Result:
-    total, bad = conn.execute(
+    total, bad = _x(conn,
         """SELECT COUNT(*),
                   SUM(CASE WHEN longitude < ? OR longitude > ? OR latitude < ? OR latitude > ? THEN 1 ELSE 0 END)
            FROM staging_calls WHERE load_date=? AND longitude IS NOT NULL""",
@@ -143,20 +151,19 @@ CHECKS = [
 # ---------- runner ----------
 
 def record(conn, d, results: list[Result]) -> None:
-    conn.execute("""CREATE TABLE IF NOT EXISTS dq_results (
+    _x(conn, """CREATE TABLE IF NOT EXISTS dq_results (
         load_date TEXT, check_name TEXT, severity TEXT, passed INTEGER,
         observed REAL, threshold TEXT, detail TEXT, run_at TEXT)""")
-    conn.execute("DELETE FROM dq_results WHERE load_date=?", (d,))
+    _x(conn, "DELETE FROM dq_results WHERE load_date=?", (d,))
     now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
-    conn.executemany(
-        "INSERT INTO dq_results VALUES (?,?,?,?,?,?,?,?)",
+    conn.cursor().executemany(
+        db.q("INSERT INTO dq_results VALUES (?,?,?,?,?,?,?,?)"),
         [(d, r.name, r.severity, int(r.passed), r.observed, r.threshold, r.detail, now) for r in results])
-    conn.commit()
 
 
 def run(day: date) -> list[Result]:
     d = day.isoformat()
-    with sqlite3.connect(config.DB_PATH) as conn:
+    with db.connect() as conn:
         results = [chk(conn, d) for chk in CHECKS]
         record(conn, d, results)
     return results

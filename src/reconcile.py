@@ -14,13 +14,13 @@ The API count needs network. If it fails, we record SKIPPED, not a fake pass.
 import argparse
 import json
 import logging
-import sqlite3
 import sys
 from datetime import date, datetime, timedelta, timezone
 
 import requests
 
 import config
+from src import db
 
 log = logging.getLogger("reconcile")
 TOLERANCE_PCT = 0.5   # allowed variance for api_vs_raw; the source revises history
@@ -52,19 +52,24 @@ def raw_count(day: date) -> int | None:
 def run(day: date) -> list[tuple]:
     d = day.isoformat()
     rows = []
-    with sqlite3.connect(config.DB_PATH) as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS reconciliation (
+    with db.connect() as conn:
+        cur = conn.cursor()
+
+        def one(sql, params=()):
+            cur.execute(db.q(sql), params)
+            return cur.fetchone()[0]
+        cur.execute("""CREATE TABLE IF NOT EXISTS reconciliation (
             load_date TEXT, comparison TEXT, source_count INTEGER, target_count INTEGER,
             variance_pct REAL, status TEXT, run_at TEXT)""")
-        conn.execute("DELETE FROM reconciliation WHERE load_date=?", (d,))
+        cur.execute(db.q("DELETE FROM reconciliation WHERE load_date=?"), (d,))
 
-        staging = conn.execute("SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,)).fetchone()[0]
-        rejects = conn.execute("SELECT COUNT(*) FROM staging_rejects WHERE load_date=?", (d,)).fetchone()[0]
+        staging = one("SELECT COUNT(*) FROM staging_calls WHERE load_date=?", (d,))
+        rejects = one("SELECT COUNT(*) FROM staging_rejects WHERE load_date=?", (d,))
         # count facts by the day's staging rowids, not by load_date: a rowid re-seen on a
         # later day is (correctly) re-stamped with that later load_date
-        fact = conn.execute("""SELECT COUNT(*) FROM staging_calls s
-                               JOIN fact_unit_response f ON f.rowid_src = s.rowid
-                               WHERE s.load_date=?""", (d,)).fetchone()[0]
+        fact = one("""SELECT COUNT(*) FROM staging_calls s
+                      JOIN fact_unit_response f ON f.rowid_src = s.rowid
+                      WHERE s.load_date=?""", (d,))
         raw = raw_count(day)
         api = api_count(day)
 
@@ -86,8 +91,7 @@ def run(day: date) -> list[tuple]:
         rec("staging_vs_fact", staging, fact, 0.0)
 
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        conn.executemany("INSERT INTO reconciliation VALUES (?,?,?,?,?,?,?)", [r + (now,) for r in rows])
-        conn.commit()
+        cur.executemany(db.q("INSERT INTO reconciliation VALUES (?,?,?,?,?,?,?)"), [r + (now,) for r in rows])
     return rows
 
 

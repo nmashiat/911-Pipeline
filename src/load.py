@@ -14,14 +14,13 @@ What this does, in order:
 import argparse
 import json
 import logging
-import sqlite3
 import sys
 from datetime import date
 
 import pandas as pd
 
 import config
-from src import schema
+from src import db, schema
 
 log = logging.getLogger("load")
 
@@ -131,16 +130,19 @@ def dedupe(df: pd.DataFrame) -> pd.DataFrame:
 
 def create_table_sql(table: str, extra: str = "") -> str:
     """Explicit DDL so the table shape is declared, not inferred from whatever loads first."""
-    cols = []
-    for c in schema.KEY_COLUMNS + schema.TEXT_COLUMNS + schema.TIMESTAMP_COLUMNS + schema.DATE_COLUMNS:
-        cols.append(f"{c} TEXT")
-    for c in schema.INT_COLUMNS:
-        cols.append(f"{c} INTEGER")
-    for c in schema.BOOL_COLUMNS:
-        cols.append(f"{c} INTEGER")
-    for c in schema.GEO_COLUMNS:
-        cols.append(f"{c} REAL")
+    ts = "TIMESTAMP" if db.is_postgres() else "TEXT"
+    dt = "DATE" if db.is_postgres() else "TEXT"
+    cols = [f"{c} TEXT" for c in schema.KEY_COLUMNS + schema.TEXT_COLUMNS]
+    cols += [f"{c} {ts}" for c in schema.TIMESTAMP_COLUMNS]
+    cols += [f"{c} {dt}" for c in schema.DATE_COLUMNS]
+    cols += [f"{c} INTEGER" for c in schema.INT_COLUMNS + schema.BOOL_COLUMNS]
+    cols += [f"{c} REAL" for c in schema.GEO_COLUMNS]
     return f"CREATE TABLE IF NOT EXISTS {table} ({extra} {', '.join(cols)}, load_date TEXT)"
+
+
+def _rows(df: pd.DataFrame) -> list[tuple]:
+    """DataFrame -> list of tuples with NaN/NaT/pd.NA turned into None."""
+    return [tuple(None if pd.isna(v) else v for v in row) for row in df.itertuples(index=False, name=None)]
 
 
 def write(day: date, good: pd.DataFrame, bad: pd.DataFrame) -> None:
@@ -149,23 +151,29 @@ def write(day: date, good: pd.DataFrame, bad: pd.DataFrame) -> None:
     good["load_date"] = day.isoformat()
     bad["load_date"] = day.isoformat()
 
-    # SQLite has no native date/datetime; store ISO text
     for df in (good, bad):
         for col in schema.TIMESTAMP_COLUMNS:
-            df[col] = df[col].dt.strftime("%Y-%m-%dT%H:%M:%S")
+            # Postgres takes real datetimes; SQLite stores ISO text
+            df[col] = df[col] if db.is_postgres() else df[col].dt.strftime("%Y-%m-%dT%H:%M:%S")
+            df[col] = df[col].astype(object).where(df[col].notna(), None)
         for col in schema.DATE_COLUMNS:
-            df[col] = df[col].astype("string")
+            df[col] = df[col] if db.is_postgres() else df[col].astype("string")
+        for col in schema.BOOL_COLUMNS:
+            df[col] = df[col].map({True: 1, False: 0}).astype("Int64")
 
-    with sqlite3.connect(config.DB_PATH) as conn:
-        conn.execute(create_table_sql("staging_calls"))
-        conn.execute(create_table_sql("staging_rejects", extra="reject_reason TEXT,"))
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute(create_table_sql("staging_calls"))
+        cur.execute(create_table_sql("staging_rejects", extra="reject_reason TEXT,"))
         for table in ("staging_calls", "staging_rejects"):
-            conn.execute(f"DELETE FROM {table} WHERE load_date = ?", (day.isoformat(),))
-        good.to_sql("staging_calls", conn, if_exists="append", index=False)
-        if len(bad):
-            bad.to_sql("staging_rejects", conn, if_exists="append", index=False)
+            cur.execute(db.q(f"DELETE FROM {table} WHERE load_date = ?"), (day.isoformat(),))
+        for table, df in (("staging_calls", good), ("staging_rejects", bad)):
+            if len(df):
+                cols = ", ".join(df.columns)
+                ph = ", ".join(["?"] * len(df.columns))
+                cur.executemany(db.q(f"INSERT INTO {table} ({cols}) VALUES ({ph})"), _rows(df))
 
-    log.info("wrote %d rows to staging_calls, %d to staging_rejects (%s)", len(good), len(bad), config.DB_PATH)
+    log.info("wrote %d rows to staging_calls, %d to staging_rejects (%s)", len(good), len(bad), db.BACKEND)
 
 
 # ---------- main ----------

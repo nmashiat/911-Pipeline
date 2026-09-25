@@ -11,11 +11,11 @@ small enough to commit, so the repo shows the pipeline running.
 import argparse
 import csv
 import logging
-import sqlite3
 import sys
 from datetime import date
 
 import config
+from src import db
 
 log = logging.getLogger("aggregate")
 OUT = config.ROOT / "outputs"
@@ -23,17 +23,18 @@ OUT = config.ROOT / "outputs"
 
 def build(day: date) -> int:
     d = day.isoformat()
-    with sqlite3.connect(config.DB_PATH) as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS agg_daily (
+    with db.connect() as conn:
+        cur = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS agg_daily (
             full_date TEXT, call_type_group TEXT, neighborhood TEXT,
             calls INTEGER, units INTEGER,
             avg_response_secs REAL, p90_response_secs INTEGER, pct_calls_with_on_scene REAL,
             load_date TEXT)""")
-        conn.execute("DELETE FROM agg_daily WHERE load_date=?", (d,))
-        conn.execute("""
+        cur.execute(db.q("DELETE FROM agg_daily WHERE load_date=?"), (d,))
+        cur.execute(db.q("""
             INSERT INTO agg_daily
             WITH base AS (
-              SELECT dd.full_date, COALESCE(ct.call_type_group,'(none)') AS grp,
+              SELECT CAST(dd.full_date AS TEXT) AS full_date, COALESCE(ct.call_type_group,'(none)') AS grp,
                      COALESCE(n.neighborhood,'(none)') AS hood,
                      fc.response_secs, fc.units_dispatched, fc.load_date
               FROM fact_call fc
@@ -47,24 +48,25 @@ def build(day: date) -> int:
               FROM base)
             SELECT full_date, grp, hood,
                    COUNT(*), SUM(units_dispatched),
-                   ROUND(AVG(response_secs), 1),
+                   ROUND(CAST(AVG(response_secs) AS NUMERIC), 1),
                    MAX(CASE WHEN rn = CAST(n_resp * 0.9 + 0.5 AS INTEGER) THEN response_secs END),
                    ROUND(100.0 * COUNT(response_secs) / COUNT(*), 1),
-                   load_date
-            FROM ranked GROUP BY full_date, grp, hood""", (d,))
-        conn.commit()
+                   MAX(load_date)
+            FROM ranked GROUP BY full_date, grp, hood"""), (d,))
 
         # committable summary: whole history at date grain
         OUT.mkdir(exist_ok=True)
-        rows = conn.execute("""
+        cur.execute("""
             SELECT full_date, SUM(calls) AS calls, SUM(units) AS units,
-                   ROUND(SUM(avg_response_secs*calls)/SUM(calls),1) AS avg_response_secs
-            FROM agg_daily GROUP BY full_date ORDER BY full_date""").fetchall()
+                   ROUND(CAST(SUM(avg_response_secs*calls)/SUM(calls) AS NUMERIC),1) AS avg_response_secs
+            FROM agg_daily GROUP BY full_date ORDER BY full_date""")
+        rows = cur.fetchall()
         with (OUT / "daily_summary.csv").open("w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["date", "calls", "units", "avg_response_secs"])
             w.writerows(rows)
-        n = conn.execute("SELECT COUNT(*) FROM agg_daily WHERE load_date=?", (d,)).fetchone()[0]
+        cur.execute(db.q("SELECT COUNT(*) FROM agg_daily WHERE load_date=?"), (d,))
+        n = cur.fetchone()[0]
     return n
 
 
