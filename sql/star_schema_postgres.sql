@@ -1,4 +1,4 @@
--- Postgres version of the star schema. Same tables and columns as star_schema.sql;
+-- Postgres version of the star schema (requires Postgres 15+ for NULLS NOT DISTINCT). Same tables and columns as star_schema.sql;
 -- real TIMESTAMP/DATE types, SERIAL keys, and indexes.
 
 CREATE TABLE IF NOT EXISTS dim_date (
@@ -13,14 +13,14 @@ CREATE TABLE IF NOT EXISTS dim_call_type (
     call_type_key   SERIAL PRIMARY KEY,
     call_type       TEXT NOT NULL,
     call_type_group TEXT,
-    UNIQUE (call_type, call_type_group)
+    UNIQUE NULLS NOT DISTINCT (call_type, call_type_group)
 );
 
 CREATE TABLE IF NOT EXISTS dim_unit (
     unit_key   SERIAL PRIMARY KEY,
     unit_id    TEXT NOT NULL,
     unit_type  TEXT,
-    UNIQUE (unit_id, unit_type)
+    UNIQUE NULLS NOT DISTINCT (unit_id, unit_type)
 );
 
 CREATE TABLE IF NOT EXISTS dim_neighborhood (

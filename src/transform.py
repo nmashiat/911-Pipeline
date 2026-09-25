@@ -7,7 +7,10 @@ Run:
 Works on SQLite (default) and Postgres (SF911_DB=postgres). Dialect differences
 are isolated in src/db.py; the SQL here is written once.
 
-Dimensions are upserted: a call type seen before keeps its key.
+Dimensions are upserted: a call type seen before keeps its key. Nullable parts of
+a dimension's natural key (call_type_group, unit_type) are stored as '' — both
+SQLite and Postgres treat NULLs as distinct in UNIQUE constraints, which would
+create a new dimension row on every load and fan out the facts on the join.
 Facts for the day are deleted then re-inserted, so reruns are idempotent.
 Interval columns are NULL when the order is invalid rather than negative —
 we don't want a -300 second response time averaging into a report.
@@ -69,12 +72,12 @@ def build(day: date) -> dict:
             {db.on_conflict_ignore('date_key')}""", (d,))
         run(f"""
             INSERT OR IGNORE INTO dim_call_type (call_type, call_type_group)
-            SELECT DISTINCT call_type, call_type_group FROM staging_calls
+            SELECT DISTINCT call_type, COALESCE(call_type_group, '') FROM staging_calls
             WHERE load_date = ? AND call_type IS NOT NULL
             {db.on_conflict_ignore('call_type, call_type_group')}""", (d,))
         run(f"""
             INSERT OR IGNORE INTO dim_unit (unit_id, unit_type)
-            SELECT DISTINCT unit_id, unit_type FROM staging_calls WHERE load_date = ?
+            SELECT DISTINCT unit_id, COALESCE(unit_type, '') FROM staging_calls WHERE load_date = ?
             {db.on_conflict_ignore('unit_id, unit_type')}""", (d,))
         run(f"""
             INSERT OR IGNORE INTO dim_neighborhood (neighborhood, supervisor_district, battalion)
@@ -107,8 +110,8 @@ def build(day: date) -> dict:
                    s.load_date
             FROM staging_calls s
             LEFT JOIN dim_call_type ct ON ct.call_type = s.call_type
-                                      AND COALESCE(ct.call_type_group,'') = COALESCE(s.call_type_group,'')
-            LEFT JOIN dim_unit u ON u.unit_id = s.unit_id AND COALESCE(u.unit_type,'') = COALESCE(s.unit_type,'')
+                                      AND ct.call_type_group = COALESCE(s.call_type_group, '')
+            LEFT JOIN dim_unit u ON u.unit_id = s.unit_id AND u.unit_type = COALESCE(s.unit_type, '')
             LEFT JOIN dim_neighborhood n ON n.neighborhood = s.neighborhoods_analysis_boundaries
             WHERE s.load_date = ?
             {db.on_conflict_replace('rowid_src', FUR_COLS[1:])}""", (d,))

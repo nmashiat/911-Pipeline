@@ -34,7 +34,7 @@ def build(day: date) -> int:
         cur.execute(db.q("""
             INSERT INTO agg_daily
             WITH base AS (
-              SELECT CAST(dd.full_date AS TEXT) AS full_date, COALESCE(ct.call_type_group,'(none)') AS grp,
+              SELECT CAST(dd.full_date AS TEXT) AS full_date, COALESCE(NULLIF(ct.call_type_group,''),'(none)') AS grp,
                      COALESCE(n.neighborhood,'(none)') AS hood,
                      fc.response_secs, fc.units_dispatched, fc.load_date
               FROM fact_call fc
