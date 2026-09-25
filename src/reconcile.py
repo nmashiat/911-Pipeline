@@ -21,7 +21,6 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 
 import config
-from src.load import DB_PATH
 
 log = logging.getLogger("reconcile")
 TOLERANCE_PCT = 0.5   # allowed variance for api_vs_raw; the source revises history
@@ -53,7 +52,7 @@ def raw_count(day: date) -> int | None:
 def run(day: date) -> list[tuple]:
     d = day.isoformat()
     rows = []
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS reconciliation (
             load_date TEXT, comparison TEXT, source_count INTEGER, target_count INTEGER,
             variance_pct REAL, status TEXT, run_at TEXT)""")

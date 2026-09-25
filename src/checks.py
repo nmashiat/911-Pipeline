@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
 import config
-from src.load import DB_PATH
 
 log = logging.getLogger("checks")
 
@@ -157,7 +156,7 @@ def record(conn, d, results: list[Result]) -> None:
 
 def run(day: date) -> list[Result]:
     d = day.isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         results = [chk(conn, d) for chk in CHECKS]
         record(conn, d, results)
     return results

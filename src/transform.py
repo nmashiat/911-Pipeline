@@ -16,7 +16,6 @@ import sys
 from datetime import date
 
 import config
-from src.load import DB_PATH
 
 log = logging.getLogger("transform")
 DDL_PATH = config.ROOT / "sql" / "star_schema.sql"
@@ -31,7 +30,7 @@ def interval(a: str, b: str) -> str:
 
 def build(day: date) -> dict:
     d = day.isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         conn.executescript(DDL_PATH.read_text())
 
         # ---- dimensions: insert anything new, keep existing keys ----

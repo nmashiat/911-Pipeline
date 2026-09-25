@@ -25,7 +25,6 @@ from src import schema
 
 log = logging.getLogger("load")
 
-DB_PATH = config.ROOT / "sf911.db"
 
 
 # ---------- 1. read ----------
@@ -157,7 +156,7 @@ def write(day: date, good: pd.DataFrame, bad: pd.DataFrame) -> None:
         for col in schema.DATE_COLUMNS:
             df[col] = df[col].astype("string")
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         conn.execute(create_table_sql("staging_calls"))
         conn.execute(create_table_sql("staging_rejects", extra="reject_reason TEXT,"))
         for table in ("staging_calls", "staging_rejects"):
@@ -166,7 +165,7 @@ def write(day: date, good: pd.DataFrame, bad: pd.DataFrame) -> None:
         if len(bad):
             bad.to_sql("staging_rejects", conn, if_exists="append", index=False)
 
-    log.info("wrote %d rows to staging_calls, %d to staging_rejects (%s)", len(good), len(bad), DB_PATH)
+    log.info("wrote %d rows to staging_calls, %d to staging_rejects (%s)", len(good), len(bad), config.DB_PATH)
 
 
 # ---------- main ----------

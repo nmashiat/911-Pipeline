@@ -16,7 +16,6 @@ import sys
 from datetime import date
 
 import config
-from src.load import DB_PATH
 
 log = logging.getLogger("aggregate")
 OUT = config.ROOT / "outputs"
@@ -24,7 +23,7 @@ OUT = config.ROOT / "outputs"
 
 def build(day: date) -> int:
     d = day.isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(config.DB_PATH) as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS agg_daily (
             full_date TEXT, call_type_group TEXT, neighborhood TEXT,
             calls INTEGER, units INTEGER,

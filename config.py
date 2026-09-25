@@ -14,6 +14,7 @@ DATE_COLUMN = "received_dttm"
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 STAGING_DIR = ROOT / "data" / "staging"
+DB_PATH = ROOT / "sf911.db"
 
 # Identify yourself to the API. Polite, and helps if they ever need to contact you.
 USER_AGENT = "sf911-pipeline (portfolio project; github.com/nmashiat)"
