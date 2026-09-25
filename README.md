@@ -140,3 +140,9 @@ difference between `WARN` and `FAIL`.
 two units per call. Zero rows rejected, zero cross-layer variance — the source
 is clean and the API count matched the loaded row count on every day. Structure
 fires and multi-unit medical calls account for nearly all calls above five units.
+
+## In action
+
+![Scheduled run on GitHub Actions](docs/actions_run.png)
+
+![Quality gates for one day](docs/quality_gates.png)
