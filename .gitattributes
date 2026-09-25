@@ -1,0 +1,5 @@
+# Language stats: count the pipeline as Python, not as the notebooks/HTML around it
+*.ipynb linguist-detectable=false
+*.html  linguist-vendored
+*.csv   linguist-detectable=false
+*.svg   linguist-detectable=false

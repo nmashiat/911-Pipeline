@@ -39,6 +39,8 @@ python run_pipeline.py --start 2026-09-01 --end 2026-09-07 # backfill
 python run_pipeline.py --date 2026-09-01 --skip-extract    # reuse the raw file
 ```
 
+Or with make: `make venv`, `make run DATE=2026-09-01`, `make backfill START=… END=…`, `make test`.
+
 Exit code `1` means a hard quality gate or a reconciliation mismatch fired.
 Each step also runs alone: `python -m src.extract --date …`, `src.load`, `src.checks`,
 `src.transform`, `src.reconcile`, `src.aggregate`.
@@ -82,6 +84,16 @@ are counted); `staging_vs_fact` proves the transform didn't drop rows.
 
 **Idempotent by day.** Each step deletes then reinserts its day. Rerunning a
 day twice yields identical tables. Dimensions upsert and keep their keys.
+
+## Tests
+
+```bash
+make test        # or: python -m pytest
+```
+`tests/` covers the loader (quarantine reasons, dedupe keeps latest, schema
+completeness, idempotent rerun) and the gates (hard fail on future timestamps,
+warn-not-fail on out-of-order timestamps, results recorded, exit code). Each
+test runs against its own temporary database. The suite runs in CI on every push.
 
 ## Documentation
 
