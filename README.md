@@ -124,3 +124,19 @@ for the trailing 8 days and commits three small files to `outputs/`:
 `daily_summary.csv`, `dq_results.csv`, `reconciliation.csv`. The commit history
 of that folder is the pipeline's run log. Commits are authored by `pipeline-bot`
 so they are distinguishable from development work.
+
+## Findings
+
+**The gate that warned was right.** On 2 Sep 2026 the `units_per_call_plausible`
+check (threshold: 30 units) fired for the first time. The call was a structure
+fire in Bernal Heights received at 06:27, with 31 units dispatched — the largest
+single response in the first week of data. Two more structure fires that day drew
+12 and 11 units. First unit on scene in 370 seconds (6 min 10 s); 29 of the 31
+dispatched units reached the scene (`fact_call`). The warning was correct to fire
+and correct not to halt: a multi-alarm fire is real, not a data error. That's the
+difference between `WARN` and `FAIL`.
+
+**Typical day (1–7 Sep 2026):** ~1,050 unit responses across ~520 calls, about
+two units per call. Zero rows rejected, zero cross-layer variance — the source
+is clean and the API count matched the loaded row count on every day. Structure
+fires and multi-unit medical calls account for nearly all calls above five units.
