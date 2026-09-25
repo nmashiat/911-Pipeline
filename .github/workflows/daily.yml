@@ -1,0 +1,47 @@
+name: daily-pipeline
+
+on:
+  schedule:
+    - cron: "30 13 * * *"     # 13:30 UTC = 06:30 Pacific; source refreshes overnight
+  workflow_dispatch:           # manual "Run workflow" button
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      # The SQLite db is not in git; rebuild recent history so the
+      # trailing-7-day gate and dimensions have context.
+      - name: Run pipeline for the last 8 days (yesterday inclusive)
+        run: |
+          START=$(date -u -d "8 days ago" +%F)
+          END=$(date -u -d "yesterday" +%F)
+          python run_pipeline.py --start "$START" --end "$END"
+
+      - name: Export gate + reconciliation log
+        run: |
+          mkdir -p outputs
+          sqlite3 -header -csv sf911.db \
+            "SELECT load_date, check_name, severity, passed, observed FROM dq_results ORDER BY 1,2" \
+            > outputs/dq_results.csv
+          sqlite3 -header -csv sf911.db \
+            "SELECT load_date, comparison, source_count, target_count, variance_pct, status FROM reconciliation ORDER BY 1,2" \
+            > outputs/reconciliation.csv
+
+      - name: Commit outputs
+        run: |
+          git config user.name  "pipeline-bot"
+          git config user.email "actions@github.com"
+          git add outputs/
+          git diff --cached --quiet && echo "no changes" || \
+            git commit -m "pipeline: $(date -u +%F) run" && git push

@@ -97,10 +97,18 @@ per day with an identifying User-Agent; no personal data is present or collected
 
 ## Roadmap
 
-- [ ] GitHub Actions: run daily, commit `outputs/daily_summary.csv`
+- [x] GitHub Actions: run daily, commit `outputs/*.csv`
 - [ ] PostgreSQL instead of SQLite
 - [ ] Airflow DAG replacing `run_pipeline.py`
 - [ ] Great Expectations suites replacing `src/checks.py`
 - [ ] Docker Compose one-command run
 - [ ] Power BI dashboard on `agg_daily`
 - [ ] Second source (Houston live incidents) for cross-city reconciliation
+
+## Scheduled runs
+
+`.github/workflows/daily.yml` runs the pipeline every morning on GitHub Actions
+for the trailing 8 days and commits three small files to `outputs/`:
+`daily_summary.csv`, `dq_results.csv`, `reconciliation.csv`. The commit history
+of that folder is the pipeline's run log. Commits are authored by `pipeline-bot`
+so they are distinguishable from development work.
