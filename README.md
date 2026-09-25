@@ -53,6 +53,18 @@ sqlite3 sf911.db "SELECT neighborhood, ROUND(AVG(response_secs)) FROM fact_call 
                   JOIN dim_neighborhood n USING(neighborhood_key) GROUP BY 1 ORDER BY 2;"
 ```
 
+## In action
+
+Every push runs the test suite; the scheduled job runs the full pipeline and
+commits its outputs. All green so far:
+
+![CI and scheduled runs on GitHub Actions](docs/actions_run.png)
+
+One day's quality gates — nine checks, four of them hard stops. The 31-unit
+warning on this day was a real multi-alarm fire (see Findings):
+
+![Quality gates for 2 Sep 2026](docs/quality_gates.png)
+
 ## Design decisions
 
 **Raw is immutable.** The API response is written to disk as received. Every
@@ -85,46 +97,6 @@ are counted); `staging_vs_fact` proves the transform didn't drop rows.
 **Idempotent by day.** Each step deletes then reinserts its day. Rerunning a
 day twice yields identical tables. Dimensions upsert and keep their keys.
 
-## Tests
-
-```bash
-make test        # or: python -m pytest
-```
-`tests/` covers the loader (quarantine reasons, dedupe keeps latest, schema
-completeness, idempotent rerun) and the gates (hard fail on future timestamps,
-warn-not-fail on out-of-order timestamps, results recorded, exit code). Each
-test runs against its own temporary database. The suite runs in CI on every push.
-
-## Documentation
-
-- [`docs/metrics.md`](docs/metrics.md) — what every number means
-- [`docs/source_to_target.md`](docs/source_to_target.md) — field lineage
-- [`sql/star_schema.sql`](sql/star_schema.sql) — the model
-
-## Source
-
-[Fire Department and EMS Dispatched Calls for Service](https://data.sf.gov/Public-Safety/Fire-Department-and-Emergency-Medical-Services-Dis/nuek-vuh3),
-DataSF, PDDL license. One row per unit response; refreshed daily. Polled once
-per day with an identifying User-Agent; no personal data is present or collected.
-
-## Roadmap
-
-- [x] GitHub Actions: run daily, commit `outputs/*.csv`
-- [ ] PostgreSQL instead of SQLite
-- [ ] Airflow DAG replacing `run_pipeline.py`
-- [ ] Great Expectations suites replacing `src/checks.py`
-- [ ] Docker Compose one-command run
-- [ ] Power BI dashboard on `agg_daily`
-- [ ] Second source (Houston live incidents) for cross-city reconciliation
-
-## Scheduled runs
-
-`.github/workflows/daily.yml` runs the pipeline every morning on GitHub Actions
-for the trailing 8 days and commits three small files to `outputs/`:
-`daily_summary.csv`, `dq_results.csv`, `reconciliation.csv`. The commit history
-of that folder is the pipeline's run log. Commits are authored by `pipeline-bot`
-so they are distinguishable from development work.
-
 ## Findings
 
 **The gate that warned was right.** On 2 Sep 2026 the `units_per_call_plausible`
@@ -141,8 +113,42 @@ two units per call. Zero rows rejected, zero cross-layer variance — the source
 is clean and the API count matched the loaded row count on every day. Structure
 fires and multi-unit medical calls account for nearly all calls above five units.
 
-## In action
+## Tests
 
-![Scheduled run on GitHub Actions](docs/actions_run.png)
+```bash
+make test        # or: python -m pytest
+```
+`tests/` covers the loader (quarantine reasons, dedupe keeps latest, schema
+completeness, idempotent rerun) and the gates (hard fail on future timestamps,
+warn-not-fail on out-of-order timestamps, results recorded, exit code). Each
+test runs against its own temporary database. The suite runs in CI on every push.
 
-![Quality gates for one day](docs/quality_gates.png)
+## Documentation
+
+- [`docs/metrics.md`](docs/metrics.md) — what every number means
+- [`docs/source_to_target.md`](docs/source_to_target.md) — field lineage
+- [`sql/star_schema.sql`](sql/star_schema.sql) — the model
+
+## Scheduled runs
+
+`.github/workflows/daily.yml` runs the pipeline every morning on GitHub Actions
+for the trailing 8 days and commits three small files to `outputs/`:
+`daily_summary.csv`, `dq_results.csv`, `reconciliation.csv`. The commit history
+of that folder is the pipeline's run log. Commits are authored by `pipeline-bot`
+so they are distinguishable from development work.
+
+## Source
+
+[Fire Department and EMS Dispatched Calls for Service](https://data.sf.gov/Public-Safety/Fire-Department-and-Emergency-Medical-Services-Dis/nuek-vuh3),
+DataSF, PDDL license. One row per unit response; refreshed daily. Polled once
+per day with an identifying User-Agent; no personal data is present or collected.
+
+## Roadmap
+
+- [x] GitHub Actions: run daily, commit `outputs/*.csv`
+- [ ] PostgreSQL instead of SQLite
+- [ ] Airflow DAG replacing `run_pipeline.py`
+- [ ] Great Expectations suites replacing `src/checks.py`
+- [ ] Docker Compose one-command run
+- [ ] Power BI dashboard on `agg_daily`
+- [ ] Second source (Houston live incidents) for cross-city reconciliation
