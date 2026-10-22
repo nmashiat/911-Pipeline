@@ -1,7 +1,4 @@
 load_date,comparison,source_count,target_count,variance_pct,status
-2026-10-13,api_vs_raw,1004,1004,0.0,PASS
-2026-10-13,raw_vs_staging,1004,1004,0.0,PASS
-2026-10-13,staging_vs_fact,1004,1004,0.0,PASS
 2026-10-14,api_vs_raw,961,961,0.0,PASS
 2026-10-14,raw_vs_staging,961,961,0.0,PASS
 2026-10-14,staging_vs_fact,961,961,0.0,PASS
@@ -23,3 +20,6 @@ load_date,comparison,source_count,target_count,variance_pct,status
 2026-10-20,api_vs_raw,980,980,0.0,PASS
 2026-10-20,raw_vs_staging,980,980,0.0,PASS
 2026-10-20,staging_vs_fact,980,980,0.0,PASS
+2026-10-21,api_vs_raw,1050,1050,0.0,PASS
+2026-10-21,raw_vs_staging,1050,1050,0.0,PASS
+2026-10-21,staging_vs_fact,1050,1050,0.0,PASS
