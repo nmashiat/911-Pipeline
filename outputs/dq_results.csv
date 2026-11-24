@@ -67,7 +67,7 @@ load_date,check_name,severity,passed,observed
 2026-11-23,no_duplicate_rowids,FAIL,1,0.0
 2026-11-23,no_future_timestamps,FAIL,1,0.0
 2026-11-23,required_not_null,FAIL,1,0.0
-2026-11-23,row_count_nonzero,FAIL,1,87.0
-2026-11-23,row_count_vs_history,WARN,0,0.085
+2026-11-23,row_count_nonzero,FAIL,1,1083.0
+2026-11-23,row_count_vs_history,WARN,1,1.054
 2026-11-23,timestamps_chronological,WARN,1,0.0
-2026-11-23,units_per_call_plausible,WARN,1,3.0
+2026-11-23,units_per_call_plausible,WARN,1,16.0

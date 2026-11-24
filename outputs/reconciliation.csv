@@ -20,6 +20,6 @@ load_date,comparison,source_count,target_count,variance_pct,status
 2026-11-22,api_vs_raw,974,974,0.0,PASS
 2026-11-22,raw_vs_staging,974,974,0.0,PASS
 2026-11-22,staging_vs_fact,974,974,0.0,PASS
-2026-11-23,api_vs_raw,87,87,0.0,PASS
-2026-11-23,raw_vs_staging,87,87,0.0,PASS
-2026-11-23,staging_vs_fact,87,87,0.0,PASS
+2026-11-23,api_vs_raw,1083,1083,0.0,PASS
+2026-11-23,raw_vs_staging,1083,1083,0.0,PASS
+2026-11-23,staging_vs_fact,1083,1083,0.0,PASS
